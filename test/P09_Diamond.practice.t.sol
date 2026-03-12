@@ -62,41 +62,43 @@ contract DiamondPracticeTest {
     // TODO(student): register OwnerFacet selectors only.
     function _buildOwnerSelectors() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](2);
-        selectors[0] = bytes4(0);
-        selectors[1] = bytes4(0);
+        selectors[0] = IOwnerFacet.diamondOwner.selector;
+        selectors[1] = IOwnerFacet.transferDiamondOwnership.selector;
     }
 
     // TODO(student): register CounterFacetV1 selectors only.
     function _buildCounterSelectorsV1() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](3);
-        selectors[0] = bytes4(0);
-        selectors[1] = bytes4(0);
-        selectors[2] = bytes4(0);
+        selectors[0] = ICounterFacetV1.setValue.selector;
+        selectors[1] = ICounterFacetV1.getValue.selector;
+        selectors[2] = ICounterFacetV1.version.selector;
     }
 
     // TODO(student): owner performs the initial cuts for OwnerFacet and CounterFacetV1.
     function _registerInitialFacets(
-        Diamond,
-        bytes4[] memory,
-        OwnerFacet,
-        bytes4[] memory,
-        CounterFacetV1
+        Diamond diamond,
+        bytes4[] memory OwnerSelectors,
+        OwnerFacet ownerFacet,
+        bytes4[] memory counterSelectorsV1,
+        CounterFacetV1 counterV1
     ) internal {
-        revert("TODO: initial diamondCut wiring");
+        IDiamondCut(address(diamond)).diamondCut(OwnerSelectors, address(ownerFacet));
+        IDiamondCut(address(diamond)).diamondCut(counterSelectorsV1, address(counterV1));
     }
 
     // TODO(student): owner, set/get/version should work through the diamond using CounterFacetV1.
     function _assertInitialFlow(Diamond diamond) internal {
         require(
-            IOwnerFacet(address(diamond)).diamondOwner() == address(0),
+            IOwnerFacet(address(diamond)).diamondOwner() == address(this),
             "TODO: owner facet must be registered"
         );
+        ICounterFacetV1(address(diamond)).setValue(INITIAL_VALUE);
         require(
             ICounterFacetV1(address(diamond)).getValue() == INITIAL_VALUE,
             "TODO: set/get through V1"
         );
         require(
-            ICounterFacetV1(address(diamond)).version() == 99,
+            ICounterFacetV1(address(diamond)).version() == 1,
             "TODO: version should be 1 before upgrade"
         );
     }
@@ -104,10 +106,10 @@ contract DiamondPracticeTest {
     // TODO(student): replace V1 selectors with V2 selectors and add increment().
     function _buildCounterSelectorsV2() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](4);
-        selectors[0] = bytes4(0);
-        selectors[1] = bytes4(0);
-        selectors[2] = bytes4(0);
-        selectors[3] = bytes4(0);
+        selectors[0] = ICounterFacetV1.setValue.selector;
+        selectors[1] = ICounterFacetV1.getValue.selector;
+        selectors[2] = ICounterFacetV1.version.selector;
+        selectors[3] = ICounterFacetV2.increment.selector;
     }
 
     // TODO(student): attacker prank -> diamondCut(...) must fail.
@@ -124,7 +126,7 @@ contract DiamondPracticeTest {
                 address(counterV2)
             )
         );
-        require(ok == true, "TODO: unauthorized diamondCut must fail");
+        require(ok == false, "TODO: unauthorized diamondCut must fail");
     }
 
     // TODO(student): registering a non-contract facet address must fail.
@@ -139,34 +141,39 @@ contract DiamondPracticeTest {
                 address(0xCAFE)
             )
         );
-        require(ok == true, "TODO: non-contract facet must fail");
+        require(ok == false, "TODO: non-contract facet must fail");
     }
 
     // TODO(student): owner replaces CounterFacetV1 with CounterFacetV2.
     function _upgradeAsOwner(
-        Diamond,
-        bytes4[] memory,
-        CounterFacetV2
+        Diamond diamond,
+        bytes4[] memory selectors,
+        CounterFacetV2 counterV2
     ) internal {
-        revert("TODO: owner cut to CounterFacetV2");
+        IDiamondCut(address(diamond)).diamondCut(selectors, address(counterV2));
     }
 
     // TODO(student): after upgrade version()==2, value is preserved, increment works, unknown selector reverts.
     function _assertPostUpgradeFlow(Diamond diamond) internal {
         require(
-            ICounterFacetV2(address(diamond)).version() == 99,
+            ICounterFacetV2(address(diamond)).version() == 2,
             "TODO: version should be 2 after upgrade"
         );
         require(
-            ICounterFacetV2(address(diamond)).getValue() == 999,
+            ICounterFacetV2(address(diamond)).getValue() == INITIAL_VALUE,
             "TODO: value must be preserved"
         );
 
+        ICounterFacetV2(address(diamond)).increment();
+        require(
+            ICounterFacetV2(address(diamond)).getValue() == INITIAL_VALUE + 1,
+            "TODO: increment should work after upgrade"
+        );
         (bool unknownSelectorOk,) = address(diamond).call(
             abi.encodeWithSignature("doesNotExist()")
         );
         require(
-            unknownSelectorOk == true,
+            unknownSelectorOk == false,
             "TODO: unknown selector should revert"
         );
     }
